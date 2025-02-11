@@ -9,7 +9,7 @@ resource "yandex_vpc_subnet" "subnet" {
   v4_cidr_blocks = ["192.168.192.0/24"]
 }
 
-resource "yandex_mdb_postgresql_cluster" "dbcluster" {
+/* resource "yandex_mdb_postgresql_cluster" "dbcluster" {
   name        = "tfhexlet"
   environment = "PRESTABLE"
   network_id  = yandex_vpc_network.net.id
@@ -38,9 +38,9 @@ resource "yandex_mdb_postgresql_cluster" "dbcluster" {
   }
 
   depends_on  = [yandex_vpc_network.net, yandex_vpc_subnet.subnet]
-}
+} */
 
-resource "yandex_mdb_postgresql_user" "dbuser" {
+/* resource "yandex_mdb_postgresql_user" "dbuser" {
   cluster_id = yandex_mdb_postgresql_cluster.dbcluster.id
   name       = var.db_user
   password   = var.db_password
@@ -54,7 +54,7 @@ resource "yandex_mdb_postgresql_database" "db" {
   lc_collate = "en_US.UTF-8"
   lc_type    = "en_US.UTF-8"
   depends_on = [yandex_mdb_postgresql_cluster.dbcluster]
-}
+} */
 
 resource "yandex_compute_instance" "vm" {
   name        = "tfhexlet"
@@ -77,6 +77,10 @@ resource "yandex_compute_instance" "vm" {
   }
 
   metadata = {
+    user-data = <<-EOF
+    #!/bin/bash
+    #echo 'export DB_HOST="${module.yandex-postgresql.cluster_fqdns_list[0].0}"' >> /etc/environment
+    EOF
     ssh-keys = "ubuntu:${file("~/.ssh/ssh-key.pub")}"
   }
   connection {
@@ -91,16 +95,15 @@ resource "yandex_compute_instance" "vm" {
 <<EOT
 sudo docker run -d -p 0.0.0.0:80:3000 \
   -e DB_TYPE=postgres \
-  -e DB_NAME=${var.db_name} \
-  -e DB_HOST=${yandex_mdb_postgresql_cluster.dbcluster.host.0.fqdn} \
+  -e DB_NAME=${module.yandex-postgresql.databases[0]} \
+  -e DB_HOST=${module.yandex-postgresql.cluster_fqdns_list[0].0} \
   -e DB_PORT=6432 \
-  -e DB_USER=${var.db_user} \
-  -e DB_PASS=${var.db_password} \
-  -vvv \
+  -e DB_USER=${module.yandex-postgresql.owners_data[0].user} \
+  -e DB_PASS=${module.yandex-postgresql.owners_data[0].password} \
   ghcr.io/requarks/wiki:2.5
 EOT
     ]
   }
-
-  depends_on  = [yandex_mdb_postgresql_cluster.dbcluster]
+  depends_on = [module.yandex-postgresql]
+  //depends_on  = [yandex_mdb_postgresql_cluster.dbcluster]
 }
